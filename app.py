@@ -28,39 +28,29 @@ class HousingSovereigntyModel:
         self.S_save = monthly_savings
 
     def calculate(self):
-        # 月供计算
         if self.i_loan == 0:
             self.M = self.L / self.n
         else:
             self.M = self.L * self.i_loan * (1 + self.i_loan) ** self.n / ((1 + self.i_loan) ** self.n - 1)
 
-        # 资金分配
         self.cash_locked = self.P_down + self.P_car
         self.cash_remaining = self.A - self.cash_locked
-
-        # 月收益
         self.income_total = self.A * self.i_invest
         self.income_remaining = self.cash_remaining * self.i_invest
 
-        # 净成本
         self.net_cost_buy = self.M - self.income_remaining
         self.net_cost_rent = self.R_rent - self.income_total
 
-        # 主权溢价 & 安全边际
         self.delta_p = self.net_cost_buy - self.net_cost_rent
         self.safety_margin = self.S_save - self.M
-
-        # 30年动态模拟
         self.simulate_30_years()
 
     def simulate_30_years(self):
         balance_buy = self.cash_remaining
         balance_rent = self.A
-
         for _ in range(self.n):
             balance_buy = balance_buy * (1 + self.i_invest) + self.S_save - self.M
             balance_rent = balance_rent * (1 + self.i_invest) + self.S_save - self.R_rent
-
         self.final_balance_buy = balance_buy
         self.final_balance_rent = balance_rent
         self.wealth_diff = balance_buy - balance_rent
@@ -68,12 +58,27 @@ class HousingSovereigntyModel:
 
 # ==================== 页面布局 ====================
 st.title("🏠 住房主权量化模型 HSM v3.0")
-st.markdown("量化买房 vs 租房的真实成本，考虑资金机会成本与长期财富积累")
+
+# --- 模型初衷说明 ---
+with st.expander("📌 点击展开：为什么我们需要这款量化模型？", expanded=True):
+    st.markdown(f"""
+    在当代城市生活，尤其是面对大城市的高昂生活成本时，“买房还是租房”早已不是简单的财务选择，而是一场关乎“人生确定性”与“流动性自由”的博弈。
+
+    我们常常焦虑：
+    * **到底要不要买房？** 30年的贷款期限是否会锁死我最黄金的青春？
+    * **首付该付多少？** 是追求极低月供的安稳，还是保留现金流应对不确定的未来？
+    * **车子该买什么档次？** 安全感与消费主义的边界在哪里？
+
+    这款模型诞生的初衷，就是为了将这些感性的焦虑“数字化”。通过解构资金的机会成本，我们将模糊的“归属感”量化为“房产主权价格”。
+
+    **什么是“房产主权价格”？**
+    它代表了你为了拥有“自由装修、不被驱赶、资产归属”等权利，每月真实支付的**额外溢价**。它不替你做决定，但它会诚实地告诉你：为了这份“居住主权”，你正在支付多少台“凯迪拉克”的代价，以及你的现金流是否足以支撑这份执念。
+
+    愿数据能帮你拨开迷雾，在生活的精打细算中，找到属于你的那份从容。
+    """)
 
 # 侧边栏参数
 st.sidebar.header("📋 参数配置")
-
-# 使用列布局让输入更紧凑
 col1, col2 = st.sidebar.columns(2)
 with col1:
     total_cash = st.number_input("初始现金(万)", value=90.0, min_value=0.0) * 10000
@@ -88,20 +93,13 @@ with col2:
     rent = st.number_input("月租金(元)", value=4000, min_value=0)
     savings = st.number_input("月攒钱(元)", value=15000, min_value=0)
 
-# 计算按钮
-if st.sidebar.button("🚀 开始计算", type="primary", use_container_width=True):
-    # 参数校验
+if st.sidebar.button("🚀 开始量化主权", type="primary", use_container_width=True):
     if down_payment + car_cost > total_cash:
-        st.error("❌ 首付+购车款不能超过初始现金！")
+        st.error("❌ 现金流预警：首付+购车款超过了你的初始初始现金，请调整配置。")
     else:
-        # 计算
-        model = HousingSovereigntyModel(
-            total_cash, house_price, down_payment, car_cost,
-            loan_rate, int(loan_years), invest_rate, rent, savings
-        )
+        model = HousingSovereigntyModel(total_cash, house_price, down_payment, car_cost,
+                                        loan_rate, int(loan_years), invest_rate, rent, savings)
         model.calculate()
-
-        # 保存到 session
         st.session_state.model = model
         st.session_state.calculated = True
 
@@ -110,82 +108,73 @@ if st.session_state.get('calculated'):
     model = st.session_state.model
 
     # 关键指标卡片
-    st.subheader("📊 核心指标")
+    st.subheader("📊 核心量化指标")
     c1, c2, c3, c4 = st.columns(4)
 
-    delta_color = "inverse" if model.delta_p > 0 else "normal"
-    c1.metric("主权溢价 (ΔP)", f"{model.delta_p:,.0f} 元/月",
-              delta=f"买房多付{model.delta_p:,.0f}" if model.delta_p > 0 else f"买房省{abs(model.delta_p):,.0f}",
-              delta_color=delta_color)
+    with c1:
+        st.metric("房产主权价格 (ΔP)", f"{model.delta_p:,.0f} 元/月")
+        st.caption("为了拥有这套房的“控制权”，你每月比租房多付出的净成本。")
 
-    safety_color = "normal" if model.safety_margin > 0 else "off"
-    c2.metric("安全边际", f"{model.safety_margin:,.0f} 元/月",
-              delta="安全" if model.safety_margin > 0 else "危险",
-              delta_color=safety_color)
+    with c2:
+        st.metric("现金流安全边际", f"{model.safety_margin:,.0f} 元/月")
+        st.caption("支付月供后，你每月剩余的可支配结余（回血能力）。")
 
-    xt5 = model.delta_p * 12 * 30 / 300000
-    c3.metric("30年溢价", f"{xt5:.1f} 台XT5", delta=f"≈{xt5 * 30:.0f}万")
+    with c3:
+        xt5 = model.delta_p * 12 * 30 / 300000
+        st.metric("30年主权代价", f"{xt5:.1f} 台XT5")
+        st.caption(f"30年溢价总额约 {model.delta_p * 12 * 30 / 10000:.0f}万。")
 
-    wealth_diff = model.wealth_diff / 10000
-    c4.metric("30年财富差", f"{wealth_diff:,.1f} 万",
-              delta=f"买房多{wealth_diff:.1f}万" if wealth_diff > 0 else f"租房多{abs(wealth_diff):.1f}万",
-              delta_color="normal" if wealth_diff > 0 else "inverse")
+    with c4:
+        wealth_diff = model.wealth_diff / 10000
+        st.metric("30年财富现金差", f"{wealth_diff:,.1f} 万")
+        st.caption("30年后，租房方案比买房方案多出（或少出）的现金存款。")
 
     st.markdown("---")
 
-    # 详细分析
+    # 详细分析说明
     col_left, col_right = st.columns(2)
 
     with col_left:
-        st.subheader("💰 首月现金流对比")
-        st.write(f"**买房方案：**")
-        st.write(f"- 月供支出：{model.M:,.0f} 元")
-        st.write(f"- 剩余资金收益：{model.income_remaining:,.0f} 元/月")
-        st.write(f"- **净月成本：{model.net_cost_buy:,.0f} 元**")
-        st.write(f"- 剩余现金：{model.cash_remaining / 10000:.1f} 万")
-
-        st.write(f"**租房方案：**")
-        st.write(f"- 租金支出：{model.R_rent:,.0f} 元")
-        st.write(f"- 全部资金收益：{model.income_total:,.0f} 元/月")
-        st.write(f"- **净月成本：{model.net_cost_rent:,.0f} 元**")
+        st.subheader("💰 成本构成说明")
+        with st.container(border=True):
+            st.write(f"**房产主权价格详解：**")
+            st.write(
+                f"1. **机会成本牺牲**：由于首付锁死了现金，你每月损失了约 **{model.income_total - model.income_remaining:,.0f}元** 的理财收益。")
+            st.write(f"2. **硬性支出差额**：月供 **{model.M:,.0f}元** 与租金 **{model.R_rent:,.0f}元** 的直接对比。")
+            st.write(f"3. **最终核算**：综合利息损失与月供支出，你每月的“主权溢价”为 **{model.delta_p:,.0f}元**。")
+            st.info("💡 只要你认为这笔钱买到的“归属感”和“稳定性”超过了其金额本身，买房就是理性的。")
 
     with col_right:
-        st.subheader("📈 30年动态模拟结果")
-
+        st.subheader("📈 财富趋势说明")
         chart_data = pd.DataFrame({
             "方案": ["买房(含房产)", "纯租房"],
-            "期末资产(万)": [model.final_balance_buy / 10000, model.final_balance_rent / 10000]
+            "期末资产(万)": [model.final_balance_buy / 10000, model.final_balance_rent / 10000],
+            "颜色": ["买房", "租房"]
         })
-
-        chart_data["颜色"] = ["买房", "租房"]  # 添加颜色分组列
         st.bar_chart(chart_data, x="方案", y="期末资产(万)", color="颜色")
 
-        st.info(f"""
-        **注意：** 买房方案的 {model.final_balance_buy / 10000:.1f}万 **不包含房产本身价值**。
-        若考虑房产，实际财富应为 {model.final_balance_buy / 10000 + model.house_price / 10000:.1f}万。
-        """)
+        st.write(f"**数据深度解读：**")
+        if model.wealth_diff < 0:
+            st.write(
+                f"⚠️ 在当前利率下，租房的现金流复利效应极强。30年后，纯租房者会比购房者多出 **{abs(model.wealth_diff) / 10000:.1f}万** 现金。")
+        else:
+            st.write(f"✅ 买房方案在长期中表现更好。虽然支付了主权溢价，但强制储蓄效应让你最终多积累了财富。")
 
     # 决策建议
     st.markdown("---")
-    st.subheader("💡 决策建议")
+    st.subheader("💡 最终生存策略建议")
 
     if model.delta_p > 0 and model.wealth_diff > 0:
-        st.success(f"""
-        **买房更优！** 虽然每月多付 {model.delta_p:.0f} 元主权溢价，
-        但30年后财富多积累 {model.wealth_diff / 10000:.1f} 万。
-        房子既是居住主权，也是强制储蓄工具。
-        """)
+        st.success(
+            f"【最优路径：上车】 虽然每月支付 {model.delta_p:.0f} 元的主权价格，但长远看房产的保值/强制储蓄效应覆盖了成本。")
     elif model.delta_p < 0:
-        st.success(f"""
-        **存在套利空间！** 买房每月比租房省 {abs(model.delta_p):.0f} 元，
-        建议立即买房，这是难得的划算时机。
-        """)
+        st.success(f"【绝对套利：立即购买】 买房比租房还便宜！你不仅获得了主权，还省下了现金，属于罕见的财务套利机会。")
+    elif abs(model.wealth_diff) / 10000 < 50:
+        st.info(
+            f"【平衡路径：看个人喜好】 两者财富差距在50万以内。此时财务已不是核心，请根据你对“自由”和“主权”的心理偏好做决定。")
     else:
-        st.warning(f"""
-        **租房更灵活！** 买房每月多付 {model.delta_p:.0f} 元，
-        且30年后财富少 {abs(model.wealth_diff) / 10000:.1f} 万。
-        建议继续租房，资金用于理财或投资更高收益标的。
-        """)
+        st.warning(
+            f"【审慎路径：租房为王】 买房的主权价格过高，且30年后现金流亏损巨大。建议保留现金流，用理财收益对冲租金。")
 
 else:
-    st.info("👈 请在左侧配置参数并点击「开始计算」")
+    st.info("👈 请在左侧配置你的存款、房价与未来能力，点击「开始量化主权」查看结果。")
